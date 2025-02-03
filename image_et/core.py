@@ -177,7 +177,7 @@ class ET(nn.Module):
         self,
         x: TENSOR,
         patch: Union[nn.Module, Callable],
-        out_dim: Optional[int] = None,
+        num_classes: int = 10,  # NEW: For CIFAR-10
         tkn_dim: int = 256,
         qk_dim: int = 64,
         nheads: int = 12,
@@ -190,28 +190,29 @@ class ET(nn.Module):
         blocks: int = 1,
     ):
         super().__init__()
+        self.blocks_count = blocks  # Store number of blocks for shuffling
 
         x = patch(x)
         _, n, d = x.shape
 
         self.K = time_steps
-
         self.patch = patch
 
+        # ENCODER ONLY (No decoder needed for classification)
         self.encode = nn.Sequential(
             nn.Linear(d, tkn_dim),
         )
 
-        self.decode = nn.Sequential(
-            nn.LayerNorm(tkn_dim, tkn_dim),
-            nn.Linear(tkn_dim, out_dim if out_dim is not None else d),
+        # CLASSIFICATION HEAD (NEW)
+        self.classifier = nn.Sequential(
+            nn.LayerNorm(tkn_dim),
+            nn.Linear(tkn_dim, num_classes)
         )
 
         self.pos = PositionEncode(tkn_dim, n + 1)
-
         self.cls = nn.Parameter(torch.ones(1, 1, tkn_dim))
 
-        self.mask = nn.Parameter(torch.normal(0, 0.002, size=[1, 1, tkn_dim]))
+        
 
         self.blocks = nn.ModuleList(
             [
@@ -234,41 +235,42 @@ class ET(nn.Module):
             ]
         )
 
-    def visualize(
+    def shuffle_layers(self):
+        """Shuffle transformer blocks"""
+        new_order = torch.randperm(self.blocks_count)
+        self.layers = nn.ModuleList([self.layers[i] for i in new_order])
+        
+    def forward(
         self,
         x: TENSOR,
-        mask: Optional[TENSOR] = None,
-        alpha: float = 1.0,
-        *,
         attn_mask: Optional[Sequence[TENSOR]] = None,
+        *,
+        alpha: float = 1.0,
+        return_energy: bool = False,
     ):
-
+        # PATCH EMBEDDING
         x = self.patch(x)
         x = self.encode(x)
 
-        if mask is not None:
-            x[:, mask] = self.mask
-
+        # ADD CLS TOKEN
         x = torch.cat([self.cls.repeat(x.size(0), 1, 1), x], dim=1)
         x = self.pos(x)
 
-        energies = []
-        embeddings = [self.patch(self.decode(x)[:, 1:], reverse=True)]
+        # ENERGY DYNAMICS
+        x, energies = self.evolve(
+            x, alpha, attn_mask=attn_mask, return_energy=return_energy
+        )
 
-        for norm, et in self.blocks:
-            for _ in range(self.K):
-                g = norm(x)
-                dEdg, E = torch.func.grad_and_value(et)(g, attn_mask)
+        # CLASSIFICATION (Use CLS token only)
+        cls_token = x[:, 0]  # First token is classification token
+        logits = self.classifier(cls_token)
 
-                x = x - alpha * dEdg
+        if return_energy:
+            return logits, energies
+        return logits
 
-                energies.append(E)
-
-                embeddings.append(self.patch(self.decode(x)[:, 1:], reverse=True))
-
-        g = norm(x)
-        energies.append(et(g, attn_mask))
-        return energies, embeddings
+    # REMOVED: visualize() method (reconstruction-specific)
+    # KEPT: evolve() as it's needed for energy dynamics
 
     def evolve(
         self,
@@ -297,32 +299,4 @@ class ET(nn.Module):
 
         return x, energies
 
-    def forward(
-        self,
-        x: TENSOR,
-        mask: Optional[TENSOR] = None,
-        attn_mask: Optional[Sequence[TENSOR]] = None,
-        *,
-        alpha: float = 1.0,
-        return_energy: bool = False,
-        use_cls: bool = False,
-    ):
-        x = self.patch(x)
-        x = self.encode(x)
-
-        if mask is not None:
-            x[mask] = self.mask
-
-        x = torch.cat([self.cls.repeat(x.size(0), 1, 1), x], dim=1)
-        x = self.pos(x)
-
-        x, energies = self.evolve(
-            x, alpha, attn_mask=attn_mask, return_energy=return_energy
-        )
-
-        x = self.decode(x)
-        yh = x[:, :1] if use_cls else x[:, 1:]
-
-        if return_energy:
-            return yh, energies
-        return yh
+    
