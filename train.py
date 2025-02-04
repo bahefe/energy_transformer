@@ -8,12 +8,16 @@ from torchvision.transforms import ToTensor
 from accelerate import Accelerator
 from image_et.core import ET, Patch
 
+# Import collate functions from your utils file.
+# Adjust the import path if your utils file is located elsewhere.
+from data_utils import collate_fn_augment, collate_fn_no_augment
+
 def main(args):
     # Initialize Accelerator
     accelerator = Accelerator()
     device = accelerator.device
-    
-    # Create model
+
+    # Create model using the Patch function
     patch_fn = Patch(dim=args.patch_size)
     dummy_input = torch.randn(1, 3, 32, 32).to(device)
     model = ET(
@@ -47,13 +51,14 @@ def main(args):
     )
     accelerator.print('Data accessed')
     
-    # Create dataloaders
+    # Create dataloaders using the collate functions from your utils file
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.num_workers,
-        pin_memory=True
+        pin_memory=True,
+        collate_fn=collate_fn_augment  # Batch-level augmentation applied here
     )
     
     test_loader = DataLoader(
@@ -61,7 +66,8 @@ def main(args):
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=args.num_workers,
-        pin_memory=True
+        pin_memory=True,
+        collate_fn=collate_fn_no_augment  # Standard collate function for testing
     )
     accelerator.print('Loaders ready')
     
@@ -73,7 +79,7 @@ def main(args):
         weight_decay=args.weight_decay
     )
 
-    # Prepare with Accelerator
+    # Prepare with Accelerator (wraps model, optimizer, and dataloaders)
     model, optimizer, train_loader, test_loader = accelerator.prepare(
         model, optimizer, train_loader, test_loader
     )
