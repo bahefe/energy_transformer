@@ -10,7 +10,7 @@ from image_et.core import ET, Patch
 
 # Import collate functions from your utils file.
 # Adjust the import path if your utils file is located elsewhere.
-from data_utils import collate_fn_augment, collate_fn_no_augment
+from image_et.utils import collate_fn_augment, collate_fn_no_augment
 
 def main(args):
     # Initialize Accelerator
