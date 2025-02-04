@@ -88,7 +88,7 @@ def main(args):
         total = 0
         
         epoch_start_time = time.time()
-        # Use enumerate to track batch iterations
+        # Iterate over the training data
         for batch_idx, (images, labels) in enumerate(train_loader, start=1):
             optimizer.zero_grad()
             
@@ -100,17 +100,22 @@ def main(args):
             accelerator.backward(loss)
             optimizer.step()
             
-            # Update metrics
-            total_loss += loss.item()
+            # Calculate batch accuracy
             _, predicted = outputs.max(1)
-            correct += predicted.eq(labels).sum().item()
-            total += labels.size(0)
+            batch_correct = predicted.eq(labels).sum().item()
+            batch_total = labels.size(0)
+            batch_acc = 100.0 * batch_correct / batch_total
+            
+            # Update overall metrics
+            total_loss += loss.item()
+            correct += batch_correct
+            total += batch_total
             
             # Print iteration log every 10 batches or on the final batch of the epoch
             if batch_idx % 10 == 0 or batch_idx == len(train_loader):
                 accelerator.print(
                     f"Epoch [{epoch}/{args.epochs}], Iteration [{batch_idx}/{len(train_loader)}]: "
-                    f"Loss = {loss.item():.4f}"
+                    f"Batch Accuracy = {batch_acc:.2f}%"
                 )
         
         # Validation phase
@@ -124,7 +129,7 @@ def main(args):
                 val_correct += predicted.eq(labels).sum().item()
                 val_total += labels.size(0)
         
-        # Compute average loss and accuracies
+        # Compute overall metrics for the epoch
         avg_loss = total_loss / len(train_loader)
         train_acc = 100. * correct / total
         val_acc = 100. * val_correct / val_total
