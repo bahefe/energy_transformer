@@ -1,8 +1,9 @@
-import torch, numpy as np
+import torch
+import numpy as np
 from functools import partial
 from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100
-
+from torch.utils.data import random_split
 
 CIFAR10_STD = (0.4914, 0.4822, 0.4465)
 CIFAR10_MU = (0.2023, 0.1994, 0.2010)
@@ -44,12 +45,12 @@ def str2bool(v):
     return False
 
 
-def GetCIFAR(root, which: str = "cifar10"):
+def GetCIFAR(root, which: str = "cifar10", val_ratio: float = 0.1):
     which = which.lower()
     if which == "cifar10":
         std, mean = CIFAR10_STD, CIFAR10_MU
 
-        trainset = CIFAR10(
+        trainset_full = CIFAR10(
             root,
             train=True,
             download=True,
@@ -78,7 +79,7 @@ def GetCIFAR(root, which: str = "cifar10"):
     elif which == "cifar100":
         std, mean = CIFAR100_STD, CIFAR100_MU
 
-        trainset = CIFAR100(
+        trainset_full = CIFAR100(
             root,
             train=True,
             download=True,
@@ -104,8 +105,16 @@ def GetCIFAR(root, which: str = "cifar10"):
             ),
         )
     else:
-        raise NotImplementedError("Not Available.")
+        raise NotImplementedError("Dataset not available.")
 
+    # Create a validation split (10% of the training data)
+    total_train = len(trainset_full)
+    val_size = int(total_train * val_ratio)
+    train_size = total_train - val_size
+
+    trainset, valset = random_split(trainset_full, [train_size, val_size])
+
+    # Prepare unnormalize function with std and mean shaped for images
     std, mean = map(lambda z: np.array(z)[None, :, None, None], (std, mean))
 
-    return (trainset, testset, partial(unnormalize, std=std, mean=mean))
+    return trainset, valset, testset, partial(unnormalize, std=std, mean=mean)
