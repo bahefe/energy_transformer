@@ -197,17 +197,65 @@ def main(args):
 
     accelerator.print(f"\nFinal Test Accuracy: {test_acc:.2f}%")
 
-    # Save results and model
+    # Inside main() function, replace the saving section with:
+
+    # Generate filename-friendly hyperparameter string
+    hyperparams = vars(args)
+    excluded_params = ['data_path', 'num_workers', 'num_classes']
+    abbreviations = {
+        'patch_size': 'ps',
+        'tkn_dim': 'td',
+        'qk_dim': 'qd',
+        'nheads': 'nh',
+        'hn_mult': 'hm',
+        'attn_beta': 'ab',
+        'attn_bias': 'ab',
+        'hn_bias': 'hb',
+        'time_steps': 'ts',
+        'blocks': 'bl',
+        'epochs': 'ep',
+        'batch_size': 'bs',
+        'lr': 'lr',
+        'b1': 'b1',
+        'b2': 'b2',
+        'weight_decay': 'wd',
+        'label_smoothing': 'ls'
+    }
+
+    param_parts = []
+    for k, v in hyperparams.items():
+        if k in excluded_params:
+            continue
+        abbrev = abbreviations.get(k, k)
+        # Handle different value types
+        if isinstance(v, bool):
+            param_parts.append(f"{abbrev}{1 if v else 0}")
+        elif isinstance(v, float):
+            if v.is_integer():
+                param_parts.append(f"{abbrev}{int(v)}")
+            else:
+                # Format to 4 decimal places without scientific notation
+                param_parts.append(f"{abbrev}{v:.4f}".rstrip('0').rstrip('.'))
+        else:
+            param_parts.append(f"{abbrev}{v}")
+
+    # Create filename components
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    hyper_str = "_".join(param_parts)
+    max_length = 100  # Keep filename reasonable
+    safe_hyper_str = (hyper_str[:max_length] + '..') if len(hyper_str) > max_length else hyper_str
+    
+    # Save paths
     output_dir = "./results"
     os.makedirs(output_dir, exist_ok=True)
     
-    # Save results
-    results_file = os.path.join(output_dir, f"results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+    results_file = os.path.join(output_dir, f"results_{timestamp}_{safe_hyper_str}.json")
+    model_file = os.path.join(output_dir, f"model_{timestamp}_{safe_hyper_str}.pth")
+    
+    # Save results and model (existing code)
     with open(results_file, 'w') as f:
         json.dump(results, f, indent=2)
     
-    # Save model
-    model_file = os.path.join(output_dir, "final_model.pth")
     torch.save(accelerator.unwrap_model(model).state_dict(), model_file)
     
     accelerator.print(f"\nResults saved to {results_file}")
