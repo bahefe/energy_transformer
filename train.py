@@ -27,9 +27,27 @@ def main(args):
         'timestamp': datetime.now().isoformat()
     }
     
-    accelerator = Accelerator()
-    device = accelerator.device
+    if torch.cuda.is_available():
+        device_type = "cuda"
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Use first GPU only
+    elif torch.backends.mps.is_available():
+        device_type = "mps"
+    else:
+        device_type = "cpu"
 
+    accelerator = Accelerator(
+        num_processes=1,
+        mixed_precision='no',
+        dynamo_backend="no",
+        cpu=(device_type == "cpu")
+    )
+
+    # Manual device handling for MPS
+    if device_type == "mps":
+        device = torch.device("mps")
+        accelerator._device = device
+    else:
+        device = accelerator.device
     # Create model
     patch_fn = Patch(dim=args.patch_size)
     model = ET(
@@ -45,7 +63,7 @@ def main(args):
         hn_bias=args.hn_bias,
         time_steps=args.time_steps,
         blocks=args.blocks,
-    )
+    ).to(device)
 
     # Load datasets
     trainset, valset, testset, unnormalize_fn = GetCIFAR(
