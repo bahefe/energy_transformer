@@ -30,7 +30,7 @@ def main(args):
     
     if torch.cuda.is_available():
         device_type = "cuda"
-        os.environ["CUDA_VISIBLE_DEVICES"] = "2"  # Use first GPU only
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Use first GPU only
     elif torch.backends.mps.is_available():
         device_type = "mps"
     else:
