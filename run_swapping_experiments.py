@@ -6,7 +6,7 @@ import os
 def run_experiment(strategy, interval):
     """Run training with specific swapping configuration"""
     cmd = [
-        "python", "train.py",
+        "python3", "train.py",  # Changed to python3
         "--tkn-dim", "128",
         "--qk-dim", "64",
         "--nheads", "8",
@@ -21,7 +21,6 @@ def run_experiment(strategy, interval):
         "--swap-interval", str(interval)
     ]
     
-    # Create log filename
     log_dir = "swapping_experiments"
     os.makedirs(log_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -38,7 +37,6 @@ def run_experiment(strategy, interval):
             universal_newlines=True
         )
         
-        # Real-time output streaming
         while True:
             output = process.stdout.readline()
             if output == '' and process.poll() is not None:
@@ -48,24 +46,20 @@ def run_experiment(strategy, interval):
                 f.write(output)
                 
         rc = process.poll()
-        if rc != 0:
-            print(f"❌ Experiment failed with exit code {rc}")
-        else:
-            print(f"✅ Experiment completed successfully")
+        print(f"✅ Experiment completed with exit code {rc}" if rc == 0 else f"❌ Experiment failed with exit code {rc}")
 
 def main():
-    # First run baseline (no swapping)
-    run_experiment(strategy=0, interval=0)
+    # Run baseline first
+    run_experiment(0, 0)
     
-    # Define swapping configurations
+    # Then run strategies
     strategies = [1, 2, 3, 4]
     intervals = [10, 5, 2, 1]
     
-    # Run all combinations
     for strategy in strategies:
         for interval in intervals:
             run_experiment(strategy, interval)
-            time.sleep(30)  # Cooling period between runs
+            time.sleep(30)
 
 if __name__ == "__main__":
     main()
