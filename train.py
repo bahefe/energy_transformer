@@ -24,7 +24,8 @@ def main(args):
         'args': vars(args),
         'epoch_stats': [],
         'test_acc': None,
-        'timestamp': datetime.now().isoformat()
+        'timestamp': datetime.now().isoformat(),
+        'block_order': [] if args.swap_interval > 0 else None
     }
     
     if torch.cuda.is_available():
@@ -64,6 +65,13 @@ def main(args):
         time_steps=args.time_steps,
         blocks=args.blocks,
     ).to(device)
+
+    # Configure swapping
+    if args.swap_interval > 0:
+        exclude_ends = args.swap_strategy in [3,4]
+        strategy = args.swap_strategy - 2 if args.swap_strategy > 2 else args.swap_strategy
+        model.set_swapping_policy(strategy, exclude_ends=exclude_ends)
+        results['block_order'] = [model.get_block_order()]  # Initial order
 
     # Load datasets
     trainset, valset, testset, unnormalize_fn = GetCIFAR(
@@ -179,6 +187,12 @@ def main(args):
                          f"Val Acc: {epoch_stats['val_acc']:.2f}%")
         accelerator.print("="*50)
 
+        # After epoch completes
+        if args.swap_interval > 0 and (epoch + 1) % args.swap_interval == 0:
+            model.swap_blocks()
+            results['block_order'].append(model.get_block_order())
+            accelerator.print(f"Block order after swap: {model.current_order}")
+
     # Final test evaluation
     model.eval()
     test_correct = 0
@@ -264,6 +278,10 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ET Classifier Training")
+    parser.add_argument("--swap-strategy", type=int, choices=[0,1,2,3,4], default=0,
+                   help="0:None, 1:Adjacent, 2:FullPerm, 3:AdjacentNoEnds, 4:FullPermNoEnds")
+    parser.add_argument("--swap-interval", type=int, default=0,
+                   help="Number of epochs between swaps (0 to disable)")
     # Model parameters
     parser.add_argument("--patch-size", type=int, default=4)
     parser.add_argument("--tkn-dim", type=int, default=256)
