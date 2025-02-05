@@ -214,6 +214,7 @@ def main(args):
     # Inside main() function, replace the saving section with:
 
     # Generate filename-friendly hyperparameter string
+    # Generate filename-friendly hyperparameter string
     hyperparams = vars(args)
     excluded_params = ['data_path', 'num_workers', 'num_classes']
     abbreviations = {
@@ -222,7 +223,7 @@ def main(args):
         'qk_dim': 'qd',
         'nheads': 'nh',
         'hn_mult': 'hm',
-        'attn_beta': 'ab',
+        'attn_beta': 'aβ',  # Unique symbol
         'attn_bias': 'ab',
         'hn_bias': 'hb',
         'time_steps': 'ts',
@@ -233,25 +234,26 @@ def main(args):
         'b1': 'b1',
         'b2': 'b2',
         'weight_decay': 'wd',
-        'label_smoothing': 'ls'
+        'label_smoothing': 'ls',
+        'swap_strategy': 'ss',
+        'swap_interval': 'si'
     }
-
+    
     param_parts = []
     for k, v in hyperparams.items():
         if k in excluded_params:
             continue
-        abbrev = abbreviations.get(k, k)
-        # Handle different value types
+        # Handle boolean args
         if isinstance(v, bool):
-            param_parts.append(f"{abbrev}{1 if v else 0}")
+            param_parts.append(f"{abbreviations.get(k, k)}{1 if v else 0}")
+        # Handle float args
         elif isinstance(v, float):
-            if v.is_integer():
-                param_parts.append(f"{abbrev}{int(v)}")
-            else:
-                # Format to 4 decimal places without scientific notation
-                param_parts.append(f"{abbrev}{v:.4f}".rstrip('0').rstrip('.'))
+            param_parts.append(f"{abbreviations.get(k, k)}{v:.4f}".rstrip('0').rstrip('.'))
+        # Everything else
         else:
-            param_parts.append(f"{abbrev}{v}")
+            param_parts.append(f"{abbreviations.get(k, k)}{v}")
+
+
 
     # Create filename components
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
