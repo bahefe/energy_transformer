@@ -73,14 +73,14 @@ def GetCIFAR(root, which: str = "cifar10", val_ratio: float = 0.1):
 
     # Load datasets
     trainset_full = dataset_class(
-        root,
+        root = './data/cifar-10-python',
         train=True,
         download=True,
         transform=transform_train
     )
 
     testset = dataset_class(
-        root,
+        root = './data/cifar-10-python',
         train=False,
         download=True,
         transform=transform_test
