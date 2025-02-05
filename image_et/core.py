@@ -114,13 +114,61 @@ class ET(nn.Module):
         )
         self.pos = PositionEncode(tkn_dim, n + 1)
         self.cls = nn.Parameter(torch.randn(1, 1, tkn_dim))
+        
+        # Initialize blocks and swapping system
+        self.num_blocks = blocks
         self.blocks = nn.ModuleList([
             nn.ModuleList([
                 EnergyLayerNorm(tkn_dim),
                 ETBlock(tkn_dim, qk_dim, nheads, hn_mult, attn_beta, attn_bias, hn_bias)
             ]) for _ in range(blocks)
         ])
+        self.current_order = list(range(blocks))
+        self.swap_strategy = 0  # 0: no swap, 1: adjacent, 2: permute
+        self.swap_exclude_ends = False
         self.K = time_steps
+
+    def set_swapping_policy(self, strategy: int, exclude_ends: bool = False):
+        self.swap_strategy = strategy
+        self.swap_exclude_ends = exclude_ends
+
+    def get_block_order(self):
+        return self.current_order.copy()
+
+    def swap_blocks(self):
+        """Apply the configured swapping strategy to block order"""
+        if self.swap_strategy == 0 or self.num_blocks < 2:
+            return
+
+        order = self.current_order.copy()
+        n = len(order)
+        
+        # Handle excluded ends
+        if self.swap_exclude_ends and n > 2:
+            working = order[1:-1]
+            prefix = [order[0]]
+            suffix = [order[-1]]
+        else:
+            working = order.copy()
+            prefix, suffix = [], []
+
+        # Apply swap strategy to working blocks
+        if len(working) >= 2:
+            if self.swap_strategy == 1:  # Adjacent swap
+                idx = random.randint(0, len(working)-1)
+                next_idx = (idx + 1) % len(working)
+                working[idx], working[next_idx] = working[next_idx], working[idx]
+            elif self.swap_strategy == 2:  # Full permutation
+                random.shuffle(working)
+
+        # Reconstruct full order and update
+        self.current_order = prefix + working + suffix
+        self._reorder_physical_blocks()
+
+    def _reorder_physical_blocks(self):
+        """Physically reorder blocks in the module list"""
+        new_blocks = nn.ModuleList([self.blocks[i] for i in self.current_order])
+        self.blocks = new_blocks
 
     def forward(self, x: TENSOR, alpha: float = 1.0):
         x = self.patch(x)
@@ -128,7 +176,9 @@ class ET(nn.Module):
         x = torch.cat([self.cls.expand(x.size(0), -1, -1), x], dim=1)
         x = self.pos(x)
         
-        for norm, et in self.blocks:
+        # Process blocks in current order
+        for idx in self.current_order:
+            norm, et = self.blocks[idx]
             for _ in range(self.K):
                 g = norm(x)
                 dEdg, E = torch.func.grad_and_value(et)(g)
