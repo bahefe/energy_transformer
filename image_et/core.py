@@ -182,6 +182,7 @@ class ET(nn.Module):
             for _ in range(self.K):
                 g = norm(x)
                 dEdg, E = torch.func.grad_and_value(et)(g)
+                dEdg = checkpoint(et.energy, g)
                 x = x - alpha * dEdg
         
         x = self.decode(x[:, 0])  # CLS token classification
