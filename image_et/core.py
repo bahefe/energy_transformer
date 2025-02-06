@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 from typing import Callable, Optional, Union, Sequence
+from torch.utils.checkpoint import checkpoint
 
 TENSOR = torch.Tensor
 
