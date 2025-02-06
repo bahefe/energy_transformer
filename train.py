@@ -36,7 +36,6 @@ def main(args):
         device_type = "cpu"
 
     accelerator = Accelerator(
-        num_processes=1,
         mixed_precision='no',
         dynamo_backend="no",
         cpu=(device_type == "cpu")
