@@ -38,6 +38,7 @@ def main(args):
     accelerator = Accelerator(
         mixed_precision='no',
         dynamo_backend="no",
+        gradient_accumulation_steps=2,
         cpu=(device_type == "cpu")
     )
 
