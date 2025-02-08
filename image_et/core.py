@@ -101,8 +101,10 @@ class ET(nn.Module):
                  tkn_dim: int = 256, qk_dim: int = 64, nheads: int = 12,
                  hn_mult: float = 4.0, attn_beta: float = None,
                  attn_bias: bool = False, hn_bias: bool = False,
-                 time_steps: int = 1, blocks: int = 1):
+                 time_steps: int = 1, blocks: int = 1,
+                 swap_interval: int = None, swap_strategy: int = 1):
         super().__init__()
+        # Process a sample input x through patch to determine dimensions.
         x = patch(x)
         _, n, d = x.shape
         
@@ -122,6 +124,12 @@ class ET(nn.Module):
         ])
         self.K = time_steps
 
+        # New attributes for automatic block swapping.
+        # If swap_interval is not None, we swap blocks every swap_interval forward passes.
+        self.swap_interval = swap_interval
+        self.swap_strategy = swap_strategy
+        self.iteration = 0
+
     def forward(self, x: TENSOR, alpha: float = 1.0):
         x = self.patch(x)
         x = self.encode(x)
@@ -135,6 +143,13 @@ class ET(nn.Module):
                 x = x - alpha * dEdg
         
         x = self.decode(x[:, 0])  # CLS token classification
+        
+        # Update the iteration counter and swap blocks if needed.
+        if self.swap_interval is not None:
+            self.iteration += 1
+            if self.iteration % self.swap_interval == 0:
+                self.swap_blocks(self.swap_strategy)
+        
         return x
 
     def swap_blocks(self, strategy: int):
@@ -195,9 +210,6 @@ class ET(nn.Module):
         eligible_blocks = [self.blocks[i] for i in eligible_indices]
         permuted_blocks = [eligible_blocks[i] for i in perm]
         blocks = list(self.blocks)
-        for i, pos in enumerate(eligible_indices):
-            blocks[pos] = permuted_blocks[i]
+        for idx, pos in enumerate(eligible_indices):
+            blocks[pos] = permuted_blocks[idx]
         self.blocks = nn.ModuleList(blocks)
-        
-        x = self.decode(x[:, 0])  # CLS token classification
-        return x
