@@ -48,7 +48,8 @@ def main(args):
         accelerator._device = device
     else:
         device = accelerator.device
-    # Create model
+
+    # Create model with swap parameters included.
     patch_fn = Patch(dim=args.patch_size)
     model = ET(
         torch.randn(1, 3, 32, 32),
@@ -63,6 +64,8 @@ def main(args):
         hn_bias=args.hn_bias,
         time_steps=args.time_steps,
         blocks=args.blocks,
+        swap_interval=args.swap_interval,  # New parameter
+        swap_strategy=args.swap_strategy   # New parameter
     ).to(device)
 
     # Load datasets
@@ -74,14 +77,14 @@ def main(args):
 
     # Create data loaders
     train_loader = DataLoader(trainset, batch_size=args.batch_size, shuffle=True,
-                             num_workers=args.num_workers, pin_memory=True,
-                             collate_fn=collate_fn_augment)
+                              num_workers=args.num_workers, pin_memory=True,
+                              collate_fn=collate_fn_augment)
     val_loader = DataLoader(valset, batch_size=args.batch_size, shuffle=False,
-                           num_workers=args.num_workers, pin_memory=True,
-                           collate_fn=collate_fn_no_augment)
-    test_loader = DataLoader(testset, batch_size=args.batch_size, shuffle=False,
                             num_workers=args.num_workers, pin_memory=True,
                             collate_fn=collate_fn_no_augment)
+    test_loader = DataLoader(testset, batch_size=args.batch_size, shuffle=False,
+                             num_workers=args.num_workers, pin_memory=True,
+                             collate_fn=collate_fn_no_augment)
 
     # Setup optimizer
     optimizer = torch.optim.AdamW(
@@ -175,8 +178,8 @@ def main(args):
 
         accelerator.print(f"\nEpoch {epoch+1}/{args.epochs} Summary:")
         accelerator.print(f"Train Loss: {epoch_stats['train_loss']:.4f} | "
-                         f"Train Acc: {epoch_stats['train_acc']:.2f}% | "
-                         f"Val Acc: {epoch_stats['val_acc']:.2f}%")
+                            f"Train Acc: {epoch_stats['train_acc']:.2f}% | "
+                            f"Val Acc: {epoch_stats['val_acc']:.2f}%")
         accelerator.print("="*50)
 
     # Final test evaluation
@@ -197,8 +200,6 @@ def main(args):
 
     accelerator.print(f"\nFinal Test Accuracy: {test_acc:.2f}%")
 
-    # Inside main() function, replace the saving section with:
-
     # Generate filename-friendly hyperparameter string
     hyperparams = vars(args)
     excluded_params = ['data_path', 'num_workers', 'num_classes']
@@ -213,6 +214,8 @@ def main(args):
         'hn_bias': 'hb',
         'time_steps': 'ts',
         'blocks': 'bl',
+        'swap_interval': 'si',  # New abbreviation for swap_interval
+        'swap_strategy': 'ss',  # New abbreviation for swap_strategy
         'epochs': 'ep',
         'batch_size': 'bs',
         'lr': 'lr',
@@ -236,6 +239,8 @@ def main(args):
             else:
                 # Format to 4 decimal places without scientific notation
                 param_parts.append(f"{abbrev}{v:.4f}".rstrip('0').rstrip('.'))
+        elif v is None:
+            param_parts.append(f"{abbrev}None")
         else:
             param_parts.append(f"{abbrev}{v}")
 
@@ -252,7 +257,7 @@ def main(args):
     results_file = os.path.join(output_dir, f"results_{timestamp}_{safe_hyper_str}.json")
     model_file = os.path.join(output_dir, f"model_{timestamp}_{safe_hyper_str}.pth")
     
-    # Save results and model (existing code)
+    # Save results and model
     with open(results_file, 'w') as f:
         json.dump(results, f, indent=2)
     
@@ -275,6 +280,11 @@ if __name__ == "__main__":
     parser.add_argument("--hn-bias", action="store_true")
     parser.add_argument("--time-steps", type=int, default=12)
     parser.add_argument("--blocks", type=int, default=4)
+    # New swap parameters
+    parser.add_argument("--swap-interval", type=int, default=None,
+                        help="Interval (in iterations) at which to swap blocks in the model.")
+    parser.add_argument("--swap-strategy", type=int, default=1,
+                        help="Swap strategy to use (1, 2, 3, or 4).")
     
     # Training parameters
     parser.add_argument("--epochs", type=int, default=10)
