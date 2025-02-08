@@ -104,7 +104,7 @@ class ET(nn.Module):
                  time_steps: int = 1, blocks: int = 1,
                  swap_interval: int = None, swap_strategy: int = 1):
         super().__init__()
-        # Process a sample input x through patch to determine dimensions.
+        # Process sample input to obtain dimensions.
         x = patch(x)
         _, n, d = x.shape
         
@@ -124,11 +124,14 @@ class ET(nn.Module):
         ])
         self.K = time_steps
 
-        # New attributes for automatic block swapping.
-        # If swap_interval is not None, we swap blocks every swap_interval forward passes.
+        # New swap-related parameters.
         self.swap_interval = swap_interval
         self.swap_strategy = swap_strategy
         self.iteration = 0
+
+        # Track the order of blocks (using their initial indices) and swap history.
+        self.block_order = list(range(blocks))
+        self.swap_history = []
 
     def forward(self, x: TENSOR, alpha: float = 1.0):
         x = self.patch(x)
@@ -144,7 +147,7 @@ class ET(nn.Module):
         
         x = self.decode(x[:, 0])  # CLS token classification
         
-        # Update the iteration counter and swap blocks if needed.
+        # Increment iteration and swap blocks at given intervals.
         if self.swap_interval is not None:
             self.iteration += 1
             if self.iteration % self.swap_interval == 0:
@@ -164,6 +167,16 @@ class ET(nn.Module):
         else:
             raise ValueError(f"Invalid strategy: {strategy}")
 
+    def _record_swap(self, strategy):
+        # Print the swap event on screen.
+        print(f"Swap event at iteration {self.iteration}: strategy {strategy}, new block order: {self.block_order}")
+        # Record the event in swap_history.
+        self.swap_history.append({
+            'iteration': self.iteration,
+            'strategy': strategy,
+            'order': self.block_order.copy()
+        })
+
     def _swap_strategy1(self):
         n = len(self.blocks)
         if n < 2:
@@ -173,6 +186,9 @@ class ET(nn.Module):
         blocks = list(self.blocks)
         blocks[i], blocks[j] = blocks[j], blocks[i]
         self.blocks = nn.ModuleList(blocks)
+        # Update the block order.
+        self.block_order[i], self.block_order[j] = self.block_order[j], self.block_order[i]
+        self._record_swap(1)
 
     def _swap_strategy2(self):
         n = len(self.blocks)
@@ -181,6 +197,9 @@ class ET(nn.Module):
         perm = torch.randperm(n).tolist()
         new_blocks = [self.blocks[i] for i in perm]
         self.blocks = nn.ModuleList(new_blocks)
+        # Update the block order accordingly.
+        self.block_order = [self.block_order[i] for i in perm]
+        self._record_swap(2)
 
     def _swap_strategy3(self):
         n = len(self.blocks)
@@ -197,6 +216,9 @@ class ET(nn.Module):
         blocks = list(self.blocks)
         blocks[i], blocks[j] = blocks[j], blocks[i]
         self.blocks = nn.ModuleList(blocks)
+        # Update block_order.
+        self.block_order[i], self.block_order[j] = self.block_order[j], self.block_order[i]
+        self._record_swap(3)
 
     def _swap_strategy4(self):
         n = len(self.blocks)
@@ -213,3 +235,9 @@ class ET(nn.Module):
         for idx, pos in enumerate(eligible_indices):
             blocks[pos] = permuted_blocks[idx]
         self.blocks = nn.ModuleList(blocks)
+        # Update block_order accordingly.
+        eligible_order = [self.block_order[i] for i in eligible_indices]
+        permuted_order = [eligible_order[i] for i in perm]
+        for idx, pos in enumerate(eligible_indices):
+            self.block_order[pos] = permuted_order[idx]
+        self._record_swap(4)
