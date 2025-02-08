@@ -124,12 +124,11 @@ class ET(nn.Module):
         ])
         self.K = time_steps
 
-        # New swap-related parameters.
-        self.swap_interval = swap_interval
+        # Swap-related parameters (for reference)
+        self.swap_interval = swap_interval  # (Now used at epoch level.)
         self.swap_strategy = swap_strategy
-        self.iteration = 0
 
-        # Track the order of blocks (using their initial indices) and swap history.
+        # Maintain a record of the block order and swap history.
         self.block_order = list(range(blocks))
         self.swap_history = []
 
@@ -147,12 +146,7 @@ class ET(nn.Module):
         
         x = self.decode(x[:, 0])  # CLS token classification
         
-        # Increment iteration and swap blocks at given intervals.
-        if self.swap_interval is not None:
-            self.iteration += 1
-            if self.iteration % self.swap_interval == 0:
-                self.swap_blocks(self.swap_strategy)
-        
+        # Note: We no longer perform swapping here (i.e. per batch).
         return x
 
     def swap_blocks(self, strategy: int):
@@ -169,10 +163,9 @@ class ET(nn.Module):
 
     def _record_swap(self, strategy):
         # Print the swap event on screen.
-        print(f"Swap event at iteration {self.iteration}: strategy {strategy}, new block order: {self.block_order}")
+        print(f"Swap event: strategy {strategy}, new block order: {self.block_order}")
         # Record the event in swap_history.
         self.swap_history.append({
-            'iteration': self.iteration,
             'strategy': strategy,
             'order': self.block_order.copy()
         })
