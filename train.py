@@ -100,7 +100,7 @@ def main(args):
     )
 
     # Training loop
-    start_time = time.time()
+     start_time = time.time()
     for epoch in range(args.epochs):
         epoch_stats = {'epoch': epoch+1}
         
@@ -111,7 +111,6 @@ def main(args):
         train_total = 0
         epoch_start = time.time()
 
-        # Create progress bar
         if accelerator.is_local_main_process:
             pbar = tqdm(
                 total=len(train_loader),
@@ -134,7 +133,6 @@ def main(args):
             accelerator.backward(loss)
             optimizer.step()
 
-            # Update metrics
             preds = outputs.argmax(dim=1)
             batch_correct = (preds == hard_labels).sum().item()
             batch_total = hard_labels.size(0)
@@ -143,7 +141,6 @@ def main(args):
             train_total += batch_total
             total_loss += loss.item()
 
-            # Update progress bar
             if accelerator.is_local_main_process:
                 pbar.update(1)
                 pbar.set_postfix({
@@ -151,7 +148,6 @@ def main(args):
                     'acc': f"{100 * batch_correct / batch_total:.2f}%"
                 })
 
-        # Close progress bar
         if accelerator.is_local_main_process:
             pbar.close()
 
@@ -167,7 +163,6 @@ def main(args):
                 val_correct += (preds == labels).sum().item()
                 val_total += labels.size(0)
 
-        # Record epoch statistics
         epoch_stats.update({
             'train_loss': total_loss / len(train_loader),
             'train_acc': 100 * train_correct / train_total,
@@ -182,7 +177,11 @@ def main(args):
                             f"Val Acc: {epoch_stats['val_acc']:.2f}%")
         accelerator.print("="*50)
 
-    # Final test evaluation
+        # Call swapping once per epoch if the epoch is a multiple of the swap interval.
+        if args.swap_interval is not None and ((epoch+1) % args.swap_interval == 0):
+            model.swap_blocks(args.swap_strategy)
+
+    # Final test evaluation and saving swap history remain unchanged.
     model.eval()
     test_correct = 0
     test_total = 0
@@ -200,8 +199,9 @@ def main(args):
 
     accelerator.print(f"\nFinal Test Accuracy: {test_acc:.2f}%")
 
-    
+    # Save the swap history from the model along with the rest of the results.
     results["swap_history"] = accelerator.unwrap_model(model).swap_history
+   
 
     # Filename generation and saving results/model (unchanged)
     hyperparams = vars(args)
