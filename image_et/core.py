@@ -136,3 +136,68 @@ class ET(nn.Module):
         
         x = self.decode(x[:, 0])  # CLS token classification
         return x
+
+    def swap_blocks(self, strategy: int):
+        if strategy == 1:
+            self._swap_strategy1()
+        elif strategy == 2:
+            self._swap_strategy2()
+        elif strategy == 3:
+            self._swap_strategy3()
+        elif strategy == 4:
+            self._swap_strategy4()
+        else:
+            raise ValueError(f"Invalid strategy: {strategy}")
+
+    def _swap_strategy1(self):
+        n = len(self.blocks)
+        if n < 2:
+            return
+        i = torch.randint(0, n, (1,)).item()
+        j = i + 1 if i < n - 1 else 0
+        blocks = list(self.blocks)
+        blocks[i], blocks[j] = blocks[j], blocks[i]
+        self.blocks = nn.ModuleList(blocks)
+
+    def _swap_strategy2(self):
+        n = len(self.blocks)
+        if n < 2:
+            return
+        perm = torch.randperm(n).tolist()
+        new_blocks = [self.blocks[i] for i in perm]
+        self.blocks = nn.ModuleList(new_blocks)
+
+    def _swap_strategy3(self):
+        n = len(self.blocks)
+        if n < 3:
+            return
+        eligible_indices = list(range(1, n-1))
+        eligible_count = len(eligible_indices)
+        if eligible_count < 2:
+            return
+        idx = torch.randint(0, eligible_count, (1,)).item()
+        i = eligible_indices[idx]
+        next_idx = (idx + 1) % eligible_count
+        j = eligible_indices[next_idx]
+        blocks = list(self.blocks)
+        blocks[i], blocks[j] = blocks[j], blocks[i]
+        self.blocks = nn.ModuleList(blocks)
+
+    def _swap_strategy4(self):
+        n = len(self.blocks)
+        if n < 3:
+            return
+        eligible_indices = list(range(1, n-1))
+        eligible_count = len(eligible_indices)
+        if eligible_count < 2:
+            return
+        perm = torch.randperm(eligible_count).tolist()
+        eligible_blocks = [self.blocks[i] for i in eligible_indices]
+        permuted_blocks = [eligible_blocks[i] for i in perm]
+        blocks = list(self.blocks)
+        for i, pos in enumerate(eligible_indices):
+            blocks[pos] = permuted_blocks[i]
+        self.blocks = nn.ModuleList(blocks)
+        
+        x = self.decode(x[:, 0])  # CLS token classification
+        return x
