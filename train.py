@@ -100,7 +100,7 @@ def main(args):
     )
 
     # Training loop
-     start_time = time.time()
+    start_time = time.time()
     for epoch in range(args.epochs):
         epoch_stats = {'epoch': epoch+1}
         
