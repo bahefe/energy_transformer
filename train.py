@@ -36,8 +36,8 @@ def main(args):
         device_type = "cpu"
 
     accelerator = Accelerator(
-        mixed_precision='no',
-        dynamo_backend="no",
+        mixed_precision='b16',
+        dynamo_backend="inductor",
         gradient_accumulation_steps=2,
         cpu=(device_type == "cpu")
     )
