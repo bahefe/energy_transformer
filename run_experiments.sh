@@ -24,9 +24,11 @@ for SWAP_STRATEGY in 2 3 4; do
     echo "Running experiment with swap_strategy=${SWAP_STRATEGY} and swap_interval=${SWAP_INTERVAL}"
     echo "--------------------------------------------------"
 
-    accelerate launch --num-processes ${NUM_PROCESSES} train.py \
+      accelerate launch \
+      --num-processes ${NUM_PROCESSES} \
       --mixed_precision bf16 \
       --dynamo_backend inductor \
+      train.py \
       --tkn-dim ${TKN_DIM} \
       --qk-dim ${QK_DIM} \
       --nheads ${NHEADS} \
