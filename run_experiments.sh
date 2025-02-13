@@ -17,7 +17,7 @@ DATA_PATH="./data"
 NUM_PROCESSES=1
 
 # Loop over swap strategies (1, 2, 3, 4)
-for SWAP_STRATEGY in 1 2 3 4; do
+for SWAP_STRATEGY in 2 3 4; do
   # Loop over swap intervals (10, 5, 2, 1)
   for SWAP_INTERVAL in 10 5 2 1; do
     echo "--------------------------------------------------"
