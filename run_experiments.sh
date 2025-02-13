@@ -25,6 +25,8 @@ for SWAP_STRATEGY in 2 3 4; do
     echo "--------------------------------------------------"
 
     accelerate launch --num-processes ${NUM_PROCESSES} train.py \
+      --mixed_precision bf16 \
+      --dynamo_backend inductor \
       --tkn-dim ${TKN_DIM} \
       --qk-dim ${QK_DIM} \
       --nheads ${NHEADS} \
