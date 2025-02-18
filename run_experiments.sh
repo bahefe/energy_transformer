@@ -25,8 +25,8 @@ NUM_MACHINES=1
 # Set GPU with ID 1
 export CUDA_VISIBLE_DEVICES=2
 
-# Loop over swap strategies (2, 3, 4)
-for SWAP_STRATEGY in 2 3 4; do
+# Loop over swap strategies (1, 2, 3, 4)
+for SWAP_STRATEGY in 1 2 3 4; do
   # Loop over swap intervals (10, 5, 2, 1)
   for SWAP_INTERVAL in 10 5 2 1; do
     echo "--------------------------------------------------"
