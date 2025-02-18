@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from accelerate import Accelerator
 from image_et.core import ET, Patch
-from image_et.utils import GetCIFAR, collate_fn_augment, collate_fn_no_augment
+from image_et.utils import get_cifar10_datasets, collate_fn_augment, collate_fn_no_augment
 
 def soft_cross_entropy_loss(outputs, soft_targets, label_smoothing=0.0):
     """Soft cross entropy loss with label smoothing support"""
@@ -65,9 +65,9 @@ def main(args):
         swap_strategy=args.swap_strategy
     ).to(device)
 
-    trainset, valset, testset, unnormalize_fn = GetCIFAR(
+    # Updated: use get_cifar10_datasets without the 'which' parameter.
+    trainset, valset, testset, unnormalize_fn = get_cifar10_datasets(
         root=args.data_path,
-        which="cifar10",
         val_ratio=0.1
     )
 
