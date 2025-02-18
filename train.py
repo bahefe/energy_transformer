@@ -19,7 +19,6 @@ def soft_cross_entropy_loss(outputs, soft_targets, label_smoothing=0.0):
     return -torch.sum(soft_targets * torch.log_softmax(outputs, dim=1), dim=1).mean()
 
 def main(args):
-    # Initialize tracking dictionary
     results = {
         'args': vars(args),
         'epoch_stats': [],
@@ -29,7 +28,7 @@ def main(args):
     
     if torch.cuda.is_available():
         device_type = "cuda"
-        os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Use first GPU only
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     elif torch.backends.mps.is_available():
         device_type = "mps"
     else:
@@ -42,14 +41,12 @@ def main(args):
         cpu=(device_type == "cpu")
     )
 
-    # Manual device handling for MPS
     if device_type == "mps":
         device = torch.device("mps")
         accelerator._device = device
     else:
         device = accelerator.device
 
-    # Create model with swap parameters included.
     patch_fn = Patch(dim=args.patch_size)
     model = ET(
         torch.randn(1, 3, 32, 32),
@@ -64,18 +61,16 @@ def main(args):
         hn_bias=args.hn_bias,
         time_steps=args.time_steps,
         blocks=args.blocks,
-        swap_interval=args.swap_interval,  # New parameter
-        swap_strategy=args.swap_strategy   # New parameter
+        swap_interval=args.swap_interval,
+        swap_strategy=args.swap_strategy
     ).to(device)
 
-    # Load datasets
     trainset, valset, testset, unnormalize_fn = GetCIFAR(
         root=args.data_path,
         which="cifar10",
         val_ratio=0.1
     )
 
-    # Create data loaders
     train_loader = DataLoader(trainset, batch_size=args.batch_size, shuffle=True,
                               num_workers=args.num_workers, pin_memory=True,
                               collate_fn=collate_fn_augment)
@@ -86,7 +81,6 @@ def main(args):
                              num_workers=args.num_workers, pin_memory=True,
                              collate_fn=collate_fn_no_augment)
 
-    # Setup optimizer
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.lr,
@@ -94,17 +88,14 @@ def main(args):
         weight_decay=args.weight_decay
     )
 
-    # Prepare components with Accelerator
     model, optimizer, train_loader, val_loader, test_loader = accelerator.prepare(
         model, optimizer, train_loader, val_loader, test_loader
     )
 
-    # Training loop
     start_time = time.time()
     for epoch in range(args.epochs):
         epoch_stats = {'epoch': epoch+1}
         
-        # Training phase
         model.train()
         total_loss = 0.0
         train_correct = 0
@@ -151,7 +142,6 @@ def main(args):
         if accelerator.is_local_main_process:
             pbar.close()
 
-        # Validation phase
         model.eval()
         val_correct = 0
         val_total = 0
@@ -177,11 +167,9 @@ def main(args):
                             f"Val Acc: {epoch_stats['val_acc']:.2f}%")
         accelerator.print("="*50)
 
-        # Call swapping once per epoch if the epoch is a multiple of the swap interval.
         if args.swap_interval is not None and ((epoch+1) % args.swap_interval == 0):
             model.swap_blocks(args.swap_strategy)
 
-    # Final test evaluation and saving swap history remain unchanged.
     model.eval()
     test_correct = 0
     test_total = 0
@@ -199,62 +187,47 @@ def main(args):
 
     accelerator.print(f"\nFinal Test Accuracy: {test_acc:.2f}%")
 
-    # Save the swap history from the model along with the rest of the results.
     results["swap_history"] = accelerator.unwrap_model(model).swap_history
-   
 
-    # Filename generation and saving results/model (unchanged)
     hyperparams = vars(args)
-    excluded_params = ['data_path', 'num_workers', 'num_classes']
     abbreviations = {
-        'patch_size': 'ps',
-        'tkn_dim': 'td',
-        'qk_dim': 'qd',
-        'nheads': 'nh',
-        'hn_mult': 'hm',
-        'attn_beta': 'ab',
-        'attn_bias': 'ab',
-        'hn_bias': 'hb',
-        'time_steps': 'ts',
         'blocks': 'bl',
+        'time_steps': 'ts',
+        'batch_size': 'bs',
         'swap_interval': 'si',
         'swap_strategy': 'ss',
-        'epochs': 'ep',
-        'batch_size': 'bs',
-        'lr': 'lr',
-        'b1': 'b1',
-        'b2': 'b2',
-        'weight_decay': 'wd',
-        'label_smoothing': 'ls'
     }
 
+    selected_params = ['blocks', 'time_steps', 'batch_size']
+    swap_interval_val = hyperparams.get('swap_interval')
+    if swap_interval_val is not None:
+        selected_params.extend(['swap_interval', 'swap_strategy'])
+
     param_parts = []
-    for k, v in hyperparams.items():
-        if k in excluded_params:
+    for k in selected_params:
+        v = hyperparams.get(k)
+        if v is None:
             continue
         abbrev = abbreviations.get(k, k)
         if isinstance(v, bool):
-            param_parts.append(f"{abbrev}{1 if v else 0}")
+            param_part = f"{abbrev}{1 if v else 0}"
         elif isinstance(v, float):
             if v.is_integer():
-                param_parts.append(f"{abbrev}{int(v)}")
+                param_part = f"{abbrev}{int(v)}"
             else:
-                param_parts.append(f"{abbrev}{v:.4f}".rstrip('0').rstrip('.'))
-        elif v is None:
-            param_parts.append(f"{abbrev}None")
+                param_part = f"{abbrev}{v:.4f}".rstrip('0').rstrip('.')
         else:
-            param_parts.append(f"{abbrev}{v}")
+            param_part = f"{abbrev}{v}"
+        param_parts.append(param_part)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     hyper_str = "_".join(param_parts)
-    max_length = 100
-    safe_hyper_str = (hyper_str[:max_length] + '..') if len(hyper_str) > max_length else hyper_str
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
     output_dir = "./results"
     os.makedirs(output_dir, exist_ok=True)
     
-    results_file = os.path.join(output_dir, f"results_{timestamp}_{safe_hyper_str}.json")
-    model_file = os.path.join(output_dir, f"model_{timestamp}_{safe_hyper_str}.pth")
+    results_file = os.path.join(output_dir, f"results_{timestamp}_{hyper_str}.json")
+    model_file = os.path.join(output_dir, f"model_{timestamp}_{hyper_str}.pth")
     
     with open(results_file, 'w') as f:
         json.dump(results, f, indent=2)
@@ -278,11 +251,8 @@ if __name__ == "__main__":
     parser.add_argument("--hn-bias", action="store_true")
     parser.add_argument("--time-steps", type=int, default=12)
     parser.add_argument("--blocks", type=int, default=4)
-    # New swap parameters
-    parser.add_argument("--swap-interval", type=int, default=None,
-                        help="Interval (in iterations) at which to swap blocks in the model.")
-    parser.add_argument("--swap-strategy", type=int, default=1,
-                        help="Swap strategy to use (1, 2, 3, or 4).")
+    parser.add_argument("--swap-interval", type=int, default=None)
+    parser.add_argument("--swap-strategy", type=int, default=1)
     
     # Training parameters
     parser.add_argument("--epochs", type=int, default=10)
@@ -298,5 +268,5 @@ if __name__ == "__main__":
     parser.add_argument("--num-workers", type=int, default=4)
     
     args = parser.parse_args()
-    args.num_classes = 10  # Fixed for CIFAR-10
+    args.num_classes = 10
     main(args)
