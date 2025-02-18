@@ -1,6 +1,6 @@
 #!/bin/bash
 # run_experiments.sh
-# This script runs experiments for each swap strategy (1–4) and each swap interval (10, 5, 2, 1).
+# This script runs experiments for each swap strategy (2–4) and each swap interval (10, 5, 2, 1).
 
 # Fixed parameters
 TKN_DIM=128
@@ -16,18 +16,29 @@ LR=5e-5
 DATA_PATH="./data"
 NUM_PROCESSES=1
 
-# Loop over swap strategies (1, 2, 3, 4)
+# Accelerate parameters
+MIXED_PRECISION="bf16"
+DYNAMO_BACKEND="inductor"
+GRAD_ACCUM="2"
+NUM_MACHINES=1
+
+# Set GPU with ID 1
+export CUDA_VISIBLE_DEVICES=1
+
+# Loop over swap strategies (2, 3, 4)
 for SWAP_STRATEGY in 2 3 4; do
   # Loop over swap intervals (10, 5, 2, 1)
   for SWAP_INTERVAL in 10 5 2 1; do
     echo "--------------------------------------------------"
     echo "Running experiment with swap_strategy=${SWAP_STRATEGY} and swap_interval=${SWAP_INTERVAL}"
     echo "--------------------------------------------------"
-
-      accelerate launch \
+    
+    accelerate launch \
       --num-processes ${NUM_PROCESSES} \
-      --mixed_precision bf16 \
-      --dynamo_backend inductor \
+      --num-machines ${NUM_MACHINES} \
+      --mixed_precision ${MIXED_PRECISION} \
+      --dynamo_backend ${DYNAMO_BACKEND} \
+      --gradient_accumulation_steps ${GRAD_ACCUM} \
       train.py \
       --tkn-dim ${TKN_DIM} \
       --qk-dim ${QK_DIM} \
