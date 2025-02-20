@@ -26,7 +26,7 @@ def load_and_convert_model(original_path, new_model):
     state_dict = {}
 
     # Map the block weights from original block 5 (index 4) to the new single block
-    block_prefix = "_orig_mod.blocks.4."
+    block_prefix = "_orig_mod.blocks.0."
     block_keys = [k for k in original_state if k.startswith(block_prefix)]
     for key in block_keys:
         new_key = key.replace(block_prefix, "blocks.0.")
@@ -112,9 +112,9 @@ def main(args):
     ).to(device)
     
     # Load and convert weights
-    #model = load_and_convert_model(
-    #    "results/model_20250218_171155_bl12_ts1_bs128_si10_ss1.pth",
-    #    model
+    model = load_and_convert_model(
+        "results/model_20250218_171155_bl12_ts1_bs128_si10_ss1.pth",
+        model
     #)
     
     # Rest of your original training code...
