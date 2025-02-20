@@ -95,10 +95,10 @@ def main():
     )
     
     # Define the optimizer.
-    optimizer = optim.Adam(model.parameters(), lr=0.0001)
+    optimizer = optim.AdamW(model.parameters(), lr=0.0001)
     
     # Continue training for 10 epochs.
-    num_epochs = 10
+    num_epochs = 50
     for epoch in range(num_epochs):
         model.train()
         correct_train = 0
