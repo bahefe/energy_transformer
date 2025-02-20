@@ -25,14 +25,14 @@ def load_and_convert_model(original_path, new_model):
 
     state_dict = {}
 
-    # Map the block weights from original block 5 (index 4) to the new single block:
+    # Map the block weights from original block 5 (index 4) to the new single block
     block_prefix = "_orig_mod.blocks.4."
     block_keys = [k for k in original_state if k.startswith(block_prefix)]
     for key in block_keys:
         new_key = key.replace(block_prefix, "blocks.0.")
         state_dict[new_key] = original_state[key]
 
-    # Map the encoder, decoder, and other parameters:
+    # Map the encoder, decoder, and other parameters
     mapping = {
         "cls": "_orig_mod.cls",
         "encode.0.weight": "_orig_mod.encode.0.weight",
@@ -51,7 +51,14 @@ def load_and_convert_model(original_path, new_model):
 
     # Load converted weights into the new model
     new_model.load_state_dict(state_dict, strict=False)
+
+    # Print out the state dict keys for debugging
+    print("Mapped state_dict keys:")
+    for k in new_model.state_dict().keys():
+        print(k)
+    
     return new_model
+
 
 
 
