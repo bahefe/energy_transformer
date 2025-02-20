@@ -23,23 +23,28 @@ def load_and_convert_model(original_path, new_model):
     # Load original 12-block model
     original_state = torch.load(original_path)
     
-    # Extract weights from 5th block (index 4 since blocks are 0-indexed)
-    block_prefix = "blocks.4."
+    # Extract weights from the 5th block (index 4) with the appropriate prefix
+    block_prefix = "_orig_mod.blocks.4."
     block_keys = [k for k in original_state if k.startswith(block_prefix)]
     
-    # Map original 5th block weights to new single block
+    # Map original 5th block weights to the new single block (removing the _orig_mod prefix)
     state_dict = {}
     for key in block_keys:
         new_key = key.replace(block_prefix, "blocks.0.")
         state_dict[new_key] = original_state[key]
     
-    # Copy CLS token and positional encoding weights
+    # Copy CLS token and positional encoding weights using the prefixed keys
     for k in ["cls", "pos.weight"]:
-        state_dict[k] = original_state[k]
+        prefixed_key = "_orig_mod." + k
+        if prefixed_key in original_state:
+            state_dict[k] = original_state[prefixed_key]
+        else:
+            print(f"Warning: Key {prefixed_key} not found in the checkpoint.")
     
-    # Load converted weights into new model
+    # Load converted weights into the new model
     new_model.load_state_dict(state_dict, strict=False)
     return new_model
+
 
 # Modified main function
 def main(args):
