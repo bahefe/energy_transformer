@@ -92,7 +92,7 @@ def main(args):
     
     # Load and convert weights
     model = load_and_convert_model(
-        "model_20250218_171155_bl12_ts1_bs128_si10_ss1.pth",
+        "results/model_20250218_171155_bl12_ts1_bs128_si10_ss1.pth",
         model
     )
     
