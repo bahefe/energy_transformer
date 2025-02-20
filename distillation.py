@@ -20,19 +20,9 @@ def soft_cross_entropy_loss(outputs, soft_targets, label_smoothing=0.0):
 
 
 def load_and_convert_model(original_path, new_model):
-    # Load original model state dict
-    original_state = torch.load(original_path)
-
+    teacher_state = torch.load(original_path, map_location="cpu")
+    
     state_dict = {}
-
-    # Map the block weights from original block 5 (index 4) to the new single block
-    block_prefix = "_orig_mod.blocks.0."
-    block_keys = [k for k in original_state if k.startswith(block_prefix)]
-    for key in block_keys:
-        new_key = key.replace(block_prefix, "blocks.0.")
-        state_dict[new_key] = original_state[key]
-
-    # Map the encoder, decoder, and other parameters
     mapping = {
         "cls": "_orig_mod.cls",
         "encode.0.weight": "_orig_mod.encode.0.weight",
@@ -43,20 +33,18 @@ def load_and_convert_model(original_path, new_model):
         "decode.1.bias": "_orig_mod.decode.1.bias",
         "pos.weight": "_orig_mod.pos.weight",
     }
-    for new_key, orig_key in mapping.items():
-        if orig_key in original_state:
-            state_dict[new_key] = original_state[orig_key]
-        else:
-            print(f"Warning: Key {orig_key} not found in the checkpoint.")
-
-    # Load converted weights into the new model
-    new_model.load_state_dict(state_dict, strict=False)
-
-    # Print out the state dict keys for debugging
-    print("Mapped state_dict keys:")
-    for k in new_model.state_dict().keys():
-        print(k)
     
+    print("Mapping teacher -> student (excluding blocks):")
+    for student_key, teacher_key in mapping.items():
+        if teacher_key in teacher_state:
+            teacher_tensor = teacher_state[teacher_key]
+            print(f"Mapping teacher {teacher_key} (shape: {teacher_tensor.shape}) to student {student_key}")
+            state_dict[student_key] = teacher_tensor
+        else:
+            print(f"Warning: Teacher key {teacher_key} not found for student key {student_key}")
+    
+    # Load the mapped weights into the student model.
+    new_model.load_state_dict(state_dict, strict=False)
     return new_model
 
 
