@@ -20,30 +20,39 @@ def soft_cross_entropy_loss(outputs, soft_targets, label_smoothing=0.0):
 
 
 def load_and_convert_model(original_path, new_model):
-    # Load original 12-block model
+    # Load original model state dict
     original_state = torch.load(original_path)
-    
-    # Extract weights from the 5th block (index 4) with the appropriate prefix
+
+    state_dict = {}
+
+    # Map the block weights from original block 5 (index 4) to the new single block:
     block_prefix = "_orig_mod.blocks.4."
     block_keys = [k for k in original_state if k.startswith(block_prefix)]
-    
-    # Map original 5th block weights to the new single block (removing the _orig_mod prefix)
-    state_dict = {}
     for key in block_keys:
         new_key = key.replace(block_prefix, "blocks.0.")
         state_dict[new_key] = original_state[key]
-    
-    # Copy CLS token and positional encoding weights using the prefixed keys
-    for k in ["cls", "pos.weight"]:
-        prefixed_key = "_orig_mod." + k
-        if prefixed_key in original_state:
-            state_dict[k] = original_state[prefixed_key]
+
+    # Map the encoder, decoder, and other parameters:
+    mapping = {
+        "cls": "_orig_mod.cls",
+        "encode.0.weight": "_orig_mod.encode.0.weight",
+        "encode.0.bias": "_orig_mod.encode.0.bias",
+        "decode.0.gamma": "_orig_mod.decode.0.gamma",
+        "decode.0.bias": "_orig_mod.decode.0.bias",
+        "decode.1.weight": "_orig_mod.decode.1.weight",
+        "decode.1.bias": "_orig_mod.decode.1.bias",
+        "pos.weight": "_orig_mod.pos.weight",
+    }
+    for new_key, orig_key in mapping.items():
+        if orig_key in original_state:
+            state_dict[new_key] = original_state[orig_key]
         else:
-            print(f"Warning: Key {prefixed_key} not found in the checkpoint.")
-    
+            print(f"Warning: Key {orig_key} not found in the checkpoint.")
+
     # Load converted weights into the new model
     new_model.load_state_dict(state_dict, strict=False)
     return new_model
+
 
 
 # Modified main function
