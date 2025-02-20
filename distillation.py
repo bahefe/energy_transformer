@@ -115,7 +115,7 @@ def main(args):
     model = load_and_convert_model(
         "results/model_20250218_171155_bl12_ts1_bs128_si10_ss1.pth",
         model
-    #)
+    )
     
     # Rest of your original training code...
     
