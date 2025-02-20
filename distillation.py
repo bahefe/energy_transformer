@@ -43,7 +43,7 @@ def load_and_convert_model(original_path, new_model):
 
 # Modified main function
 def main(args):
-  results = {
+    results = {
         'args': vars(args),
         'epoch_stats': [],
         'test_acc': None,
@@ -57,20 +57,20 @@ def main(args):
         device_type = "mps"
     else:
         device_type = "cpu"
-
+    
     accelerator = Accelerator(
         mixed_precision='fp16',
         dynamo_backend="inductor",
         gradient_accumulation_steps=2,
         cpu=(device_type == "cpu")
     )
-
+    
     if device_type == "mps":
         device = torch.device("mps")
         accelerator._device = device
     else:
         device = accelerator.device
-
+    
     patch_fn = Patch(dim=args.patch_size)
     # Initialize 1-block/12-step model
     model = ET(
@@ -89,21 +89,21 @@ def main(args):
         swap_interval=None,
         swap_strategy=None
     ).to(device)
-
+    
     # Load and convert weights
     model = load_and_convert_model(
         "model_20250218_171155_bl12_ts1_bs128_si10_ss1.pth",
         model
     )
-
+    
     # Rest of your original training code...
-
+    
     # Updated: use get_cifar10_datasets without the 'which' parameter.
     trainset, valset, testset, unnormalize_fn = get_cifar10_datasets(
         root=args.data_path,
         val_ratio=0.1
     )
-
+    
     train_loader = DataLoader(trainset, batch_size=args.batch_size, shuffle=True,
                               num_workers=args.num_workers, pin_memory=True,
                               collate_fn=collate_fn_augment)
@@ -113,18 +113,18 @@ def main(args):
     test_loader = DataLoader(testset, batch_size=args.batch_size, shuffle=False,
                              num_workers=args.num_workers, pin_memory=True,
                              collate_fn=collate_fn_no_augment)
-
+    
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.lr,
         betas=(args.b1, args.b2),
         weight_decay=args.weight_decay
     )
-
+    
     model, optimizer, train_loader, val_loader, test_loader = accelerator.prepare(
         model, optimizer, train_loader, val_loader, test_loader
     )
-
+    
     start_time = time.time()
     for epoch in range(args.epochs):
         epoch_stats = {'epoch': epoch+1}
@@ -134,7 +134,7 @@ def main(args):
         train_correct = 0
         train_total = 0
         epoch_start = time.time()
-
+    
         if accelerator.is_local_main_process:
             pbar = tqdm(
                 total=len(train_loader),
@@ -142,7 +142,7 @@ def main(args):
                 leave=False,
                 bar_format="{l_bar}{bar:20}{r_bar}"
             )
-
+    
         for batch_idx, (images, labels) in enumerate(train_loader, 1):
             optimizer.zero_grad()
             outputs = model(images)
@@ -156,7 +156,7 @@ def main(args):
             
             accelerator.backward(loss)
             optimizer.step()
-
+    
             preds = outputs.argmax(dim=1)
             batch_correct = (preds == hard_labels).sum().item()
             batch_total = hard_labels.size(0)
@@ -164,17 +164,17 @@ def main(args):
             train_correct += batch_correct
             train_total += batch_total
             total_loss += loss.item()
-
+    
             if accelerator.is_local_main_process:
                 pbar.update(1)
                 pbar.set_postfix({
                     'loss': f"{loss.item():.4f}",
                     'acc': f"{100 * batch_correct / batch_total:.2f}%"
                 })
-
+    
         if accelerator.is_local_main_process:
             pbar.close()
-
+    
         model.eval()
         val_correct = 0
         val_total = 0
@@ -185,7 +185,7 @@ def main(args):
                 preds = outputs.argmax(dim=1)
                 val_correct += (preds == labels).sum().item()
                 val_total += labels.size(0)
-
+    
         epoch_stats.update({
             'train_loss': total_loss / len(train_loader),
             'train_acc': 100 * train_correct / train_total,
@@ -193,16 +193,16 @@ def main(args):
             'epoch_time': time.time() - epoch_start
         })
         results['epoch_stats'].append(epoch_stats)
-
+    
         accelerator.print(f"\nEpoch {epoch+1}/{args.epochs} Summary:")
         accelerator.print(f"Train Loss: {epoch_stats['train_loss']:.4f} | "
                             f"Train Acc: {epoch_stats['train_acc']:.2f}% | "
                             f"Val Acc: {epoch_stats['val_acc']:.2f}%")
         accelerator.print("="*50)
-
+    
         if args.swap_interval is not None and ((epoch+1) % args.swap_interval == 0):
             model.swap_blocks(args.swap_strategy)
-
+    
     model.eval()
     test_correct = 0
     test_total = 0
@@ -213,15 +213,15 @@ def main(args):
             preds = outputs.argmax(dim=1)
             test_correct += (preds == labels).sum().item()
             test_total += labels.size(0)
-
+    
     test_acc = 100 * test_correct / test_total
     results['test_acc'] = test_acc
     results['total_time'] = time.time() - start_time
-
+    
     accelerator.print(f"\nFinal Test Accuracy: {test_acc:.2f}%")
-
+    
     results["swap_history"] = accelerator.unwrap_model(model).swap_history
-
+    
     hyperparams = vars(args)
     abbreviations = {
         'blocks': 'bl',
@@ -230,12 +230,12 @@ def main(args):
         'swap_interval': 'si',
         'swap_strategy': 'ss',
     }
-
+    
     selected_params = ['blocks', 'time_steps', 'batch_size']
     swap_interval_val = hyperparams.get('swap_interval')
     if swap_interval_val is not None:
         selected_params.extend(['swap_interval', 'swap_strategy'])
-
+    
     param_parts = []
     for k in selected_params:
         v = hyperparams.get(k)
@@ -252,7 +252,7 @@ def main(args):
         else:
             param_part = f"{abbrev}{v}"
         param_parts.append(param_part)
-
+    
     hyper_str = "_".join(param_parts)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
