@@ -44,7 +44,7 @@ def main():
     ).to(device)
     
     # Load the checkpoint.
-    checkpoint_path = "model_20250218_171155_bl12_ts1_bs128_si10_ss1.pth"  # Replace with your actual checkpoint path.
+    checkpoint_path = "results/model_20250218_171155_bl12_ts1_bs128_si10_ss1.pth"  # Replace with your actual checkpoint path.
     if not os.path.exists(checkpoint_path):
         raise FileNotFoundError(f"Checkpoint {checkpoint_path} not found.")
     
