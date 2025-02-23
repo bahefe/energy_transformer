@@ -103,7 +103,8 @@ class Hopfield(nn.Module):
             self.bias = None
 
     def forward(self, g: TENSOR):
-        return hopfield_energy(g, self.proj, self.beta, self.bias)
+        E_per_sample = -0.5 * (F.relu(self.proj(g)) ** 2).sum(dim=-1)
+        return E_per_sample.mean()
 
 class Attention(nn.Module):
     def __init__(self, in_dim: int, qk_dim: int = 64, nheads: int = 12, beta: float = None, bias: bool = False):
