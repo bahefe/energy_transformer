@@ -3,13 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 from typing import Callable, Optional, Union, Sequence
-
-TENSOR = torch.Tensor
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from typing import Optional
+
 
 TENSOR = torch.Tensor
 
