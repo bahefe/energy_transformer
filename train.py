@@ -251,7 +251,7 @@ if __name__ == "__main__":
     parser.add_argument("--hn-bias", action="store_true")
     parser.add_argument("--time-steps", type=int, default=12)
     parser.add_argument("--blocks", type=int, default=4)
-    parser.add_argument("--swap-interval", type=int, default=None)
+    parser.add_argument("--swap-interval", type=float, default=None)
     parser.add_argument("--swap-strategy", type=int, default=1)
     
     # Training parameters
