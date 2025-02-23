@@ -3,8 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 from typing import Callable, Optional, Union, Sequence
-from typing import Optional
-
 
 TENSOR = torch.Tensor
 
@@ -16,6 +14,7 @@ class Lambda(nn.Module):
 
     def forward(self, x: TENSOR):
         return self.fn(x)
+
 
 class Patch(nn.Module):
     def __init__(self, dim: int = 4, n: int = 32):
@@ -35,6 +34,7 @@ class Patch(nn.Module):
     def forward(self, x: TENSOR, reverse: bool = False):
         return self.revert(x) if reverse else self.transform(x)
 
+
 class EnergyLayerNorm(nn.Module):
     def __init__(self, in_dim: int, bias: bool = True, eps: float = 1e-5):
         super().__init__()
@@ -48,6 +48,7 @@ class EnergyLayerNorm(nn.Module):
         o = xm / torch.sqrt((xm ** 2.0).mean(-1, keepdim=True) + self.eps)
         return self.gamma * o + self.bias
 
+
 class PositionEncode(nn.Module):
     def __init__(self, dim: int, n: int):
         super().__init__()
@@ -56,6 +57,7 @@ class PositionEncode(nn.Module):
     def forward(self, x: TENSOR):
         return x + self.weight
 
+
 class Hopfield(nn.Module):
     def __init__(self, in_dim: int, multiplier: float = 4.0, bias: bool = False):
         super().__init__()
@@ -63,7 +65,8 @@ class Hopfield(nn.Module):
 
     def forward(self, g: TENSOR):
         return -0.5 * (F.relu(self.proj(g)) ** 2).sum()
-        
+
+
 class Attention(nn.Module):
     def __init__(self, in_dim: int, qk_dim: int = 64, nheads: int = 12, beta: float = None, bias: bool = False):
         super().__init__()
@@ -85,6 +88,7 @@ class Attention(nn.Module):
             A *= mask
         return (-1.0 / self.beta) * torch.logsumexp(self.beta * A, dim=-1).sum()
 
+
 class ETBlock(nn.Module):
     def __init__(self, in_dim: int, qk_dim: int = 64, nheads: int = 12, 
                  hn_mult: float = 4.0, attn_beta: float = None, 
@@ -99,13 +103,15 @@ class ETBlock(nn.Module):
     def forward(self, g: TENSOR, mask: TENSOR = None):
         return self.energy(g, mask)
 
+
 class ET(nn.Module):
     def __init__(self, x: TENSOR, patch: nn.Module, num_classes: int,
                  tkn_dim: int = 256, qk_dim: int = 64, nheads: int = 12,
                  hn_mult: float = 4.0, attn_beta: float = None,
                  attn_bias: bool = False, hn_bias: bool = False,
                  time_steps: int = 1, blocks: int = 1,
-                 swap_interval: int = None, swap_strategy: int = 1):
+                 swap_interval: Optional[float] = None,  # Now accepts a fractional interval.
+                 swap_strategy: int = 1):
         super().__init__()
         # Process sample input to obtain dimensions.
         x = patch(x)
@@ -127,15 +133,29 @@ class ET(nn.Module):
         ])
         self.K = time_steps
 
-        # Swap-related parameters (for reference)
-        self.swap_interval = swap_interval  # (Now used at epoch level.)
+        # Swap-related parameters.
+        # If swap_interval is provided, it should be a fractional value (0 < swap_interval <= 1)
+        self.swap_interval = swap_interval  
+        if self.swap_interval is not None:
+            if not (0 < self.swap_interval <= 1):
+                raise ValueError("swap_interval must be a fraction between 0 and 1.")
+            # next_swap_time keeps track of the next epoch fraction at which to swap.
+            self.next_swap_time = self.swap_interval
+        else:
+            self.next_swap_time = None
+
         self.swap_strategy = swap_strategy
 
         # Maintain a record of the block order and swap history.
         self.block_order = list(range(blocks))
         self.swap_history = []
 
-    def forward(self, x: TENSOR, alpha: float = 1.0):
+    def forward(self, x: TENSOR, alpha: float = 1.0, epoch_progress: Optional[float] = None):
+        """
+        epoch_progress: Optional float in [0,1] representing the fraction of the current epoch completed.
+                        If provided (and swap_interval is set), swaps will be triggered when epoch_progress 
+                        exceeds the next scheduled swap time.
+        """
         x = self.patch(x)
         x = self.encode(x)
         x = torch.cat([self.cls.expand(x.size(0), -1, -1), x], dim=1)
@@ -146,11 +166,24 @@ class ET(nn.Module):
                 g = norm(x)
                 dEdg, E = torch.func.grad_and_value(et)(g)
                 x = x - alpha * dEdg
-        
+
         x = self.decode(x[:, 0])  # CLS token classification
-        
-        # Note: We no longer perform swapping here (i.e. per batch).
+
+        # Trigger swap if epoch progress is provided and the scheduled swap time has been reached.
+        if (epoch_progress is not None) and (self.swap_interval is not None):
+            # Allow for multiple swaps if a batch jump skips several intervals.
+            while epoch_progress >= self.next_swap_time:
+                self.swap_blocks(self.swap_strategy)
+                self.next_swap_time += self.swap_interval
+
         return x
+
+    def reset_swap_schedule(self):
+        """
+        Call this at the start of each epoch to reset the swap schedule.
+        """
+        if self.swap_interval is not None:
+            self.next_swap_time = self.swap_interval
 
     def swap_blocks(self, strategy: int):
         if strategy == 1:
