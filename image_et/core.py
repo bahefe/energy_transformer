@@ -13,36 +13,6 @@ from typing import Optional
 
 TENSOR = torch.Tensor
 
-def my_logsumexp(x: TENSOR, dim: int) -> TENSOR:
-    """
-    Manually computes log-sum-exp over the specified dimension for numerical stability.
-    \[
-       \operatorname{LSE}(x) = m + \log\left(\sum_j \exp(x_j - m)\right),
-    \]
-    where \(m = \max(x, \text{dim})\).
-    """
-    m, _ = x.max(dim=dim, keepdim=True)
-    return m.squeeze(dim) + torch.log(torch.sum(torch.exp(x - m), dim=dim))
-
-def hopfield_energy(g: TENSOR, proj: nn.Linear, beta: TENSOR, bias: Optional[TENSOR] = None) -> TENSOR:
-    """
-    Computes the Hopfield-like energy:
-    \[
-      E(g) = -\frac{1}{\beta} \sum_{b} \log\Biggl(\sum_j \exp\Bigl(\beta \cdot \bigl((g_bW) + b\bigr)_j\Bigr)\Biggr),
-    \]
-    where the linear transformation is given by `proj` and an optional bias is added.
-    """
-    # Compute the linear projection and scale by beta.
-    h = beta * proj(g)
-    if bias is not None:
-        h = h + bias
-    # Compute log-sum-exp over the last dimension.
-    A = my_logsumexp(h, dim=-1)
-    # Return the energy as the negative scaled sum.
-    return -1 / beta * A.sum()
-
-
-
 
 class Lambda(nn.Module):
     def __init__(self, fn: Callable):
@@ -94,18 +64,11 @@ class PositionEncode(nn.Module):
 class Hopfield(nn.Module):
     def __init__(self, in_dim: int, multiplier: float = 4.0, bias: bool = False):
         super().__init__()
-        # We set bias=False in the Linear layer and add a separate bias if needed.
-        self.proj = nn.Linear(in_dim, int(in_dim * multiplier), bias=False)
-        self.beta = nn.Parameter(torch.ones(1) * 0.01)  # Initialize beta to 0.01.
-        if bias:
-            self.bias = nn.Parameter(torch.zeros(int(in_dim * multiplier)))
-        else:
-            self.bias = None
+        self.proj = nn.Linear(in_dim, int(in_dim * multiplier), bias=bias)
 
     def forward(self, g: TENSOR):
-        E_per_sample = -0.5 * (F.relu(self.proj(g)) ** 2).sum(dim=-1)
-        return E_per_sample.mean()
-
+        return -0.5 * (F.relu(self.proj(g)) ** 2).sum()
+        
 class Attention(nn.Module):
     def __init__(self, in_dim: int, qk_dim: int = 64, nheads: int = 12, beta: float = None, bias: bool = False):
         super().__init__()
