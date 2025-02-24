@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 from accelerate import Accelerator
 from image_et.core import ET, Patch
 from image_et.utils import get_cifar10_datasets, collate_fn_augment, collate_fn_no_augment
+import torch._dynamo  # Force dynamo reset so that dynamic changes (swaps) are seen
 
 def soft_cross_entropy_loss(outputs, soft_targets, label_smoothing=0.0):
     """Soft cross entropy loss with label smoothing support"""
@@ -112,7 +113,7 @@ def main(args):
 
         for batch_idx, (images, labels) in enumerate(train_loader, 1):
             optimizer.zero_grad()
-            # Compute fine-grained epoch progress: e.g., 0.25, 0.5, etc.
+            # Compute fine-grained epoch progress (e.g., 0.25, 0.5, etc.)
             epoch_progress = epoch + (batch_idx / len(train_loader))
             outputs = model(images, epoch_progress=epoch_progress)
             
@@ -140,6 +141,9 @@ def main(args):
                     'loss': f"{loss.item():.4f}",
                     'acc': f"{100 * batch_correct / batch_total:.2f}%"
                 })
+            
+            # Reset Torch Dynamo so that dynamic swaps are recompiled in the next batch
+            torch._dynamo.reset()
 
         if accelerator.is_local_main_process:
             pbar.close()
@@ -168,8 +172,6 @@ def main(args):
                             f"Train Acc: {epoch_stats['train_acc']:.2f}% | "
                             f"Val Acc: {epoch_stats['val_acc']:.2f}%")
         accelerator.print("="*50)
-
-        # Removed the end-of-epoch swap call since swapping now happens during the forward pass
 
     model.eval()
     test_correct = 0
