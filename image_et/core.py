@@ -6,7 +6,6 @@ from typing import Callable, Optional, Union, Sequence
 
 TENSOR = torch.Tensor
 
-
 class Lambda(nn.Module):
     def __init__(self, fn: Callable):
         super().__init__()
@@ -14,7 +13,6 @@ class Lambda(nn.Module):
 
     def forward(self, x: TENSOR):
         return self.fn(x)
-
 
 class Patch(nn.Module):
     def __init__(self, dim: int = 4, n: int = 32):
@@ -34,7 +32,6 @@ class Patch(nn.Module):
     def forward(self, x: TENSOR, reverse: bool = False):
         return self.revert(x) if reverse else self.transform(x)
 
-
 class EnergyLayerNorm(nn.Module):
     def __init__(self, in_dim: int, bias: bool = True, eps: float = 1e-5):
         super().__init__()
@@ -48,7 +45,6 @@ class EnergyLayerNorm(nn.Module):
         o = xm / torch.sqrt((xm ** 2.0).mean(-1, keepdim=True) + self.eps)
         return self.gamma * o + self.bias
 
-
 class PositionEncode(nn.Module):
     def __init__(self, dim: int, n: int):
         super().__init__()
@@ -57,7 +53,6 @@ class PositionEncode(nn.Module):
     def forward(self, x: TENSOR):
         return x + self.weight
 
-
 class Hopfield(nn.Module):
     def __init__(self, in_dim: int, multiplier: float = 4.0, bias: bool = False):
         super().__init__()
@@ -65,7 +60,6 @@ class Hopfield(nn.Module):
 
     def forward(self, g: TENSOR):
         return -0.5 * (F.relu(self.proj(g)) ** 2).sum()
-
 
 class Attention(nn.Module):
     def __init__(self, in_dim: int, qk_dim: int = 64, nheads: int = 12, beta: float = None, bias: bool = False):
@@ -88,7 +82,6 @@ class Attention(nn.Module):
             A *= mask
         return (-1.0 / self.beta) * torch.logsumexp(self.beta * A, dim=-1).sum()
 
-
 class ETBlock(nn.Module):
     def __init__(self, in_dim: int, qk_dim: int = 64, nheads: int = 12, 
                  hn_mult: float = 4.0, attn_beta: float = None, 
@@ -103,14 +96,27 @@ class ETBlock(nn.Module):
     def forward(self, g: TENSOR, mask: TENSOR = None):
         return self.energy(g, mask)
 
-
 class ET(nn.Module):
-    def __init__(self, x: TENSOR, patch: nn.Module, num_classes: int,
-                 tkn_dim: int = 256, qk_dim: int = 64, nheads: int = 12,
-                 hn_mult: float = 4.0, attn_beta: float = None,
-                 attn_bias: bool = False, hn_bias: bool = False,
-                 time_steps: int = 1, blocks: int = 1,
-                 swap_interval: Optional[float] = None,  # Now accepts a fractional interval.
+    """
+    This version now supports multiple or single swap "times" in absolute epochs.
+    Pass swap_interval as a float or a list of floats. E.g.:
+      - 2.0 -> swap once at 2 epochs
+      - [0.1, 2.0, 5.0] -> swap at 0.1, then at 2.0, then at 5.0 epochs
+    """
+    def __init__(self, 
+                 x: TENSOR, 
+                 patch: nn.Module, 
+                 num_classes: int,
+                 tkn_dim: int = 256, 
+                 qk_dim: int = 64, 
+                 nheads: int = 12,
+                 hn_mult: float = 4.0, 
+                 attn_beta: float = None,
+                 attn_bias: bool = False, 
+                 hn_bias: bool = False,
+                 time_steps: int = 1, 
+                 blocks: int = 1,
+                 swap_interval: Optional[Union[float, Sequence[float]]] = None,
                  swap_strategy: int = 1):
         super().__init__()
         # Process sample input to obtain dimensions.
@@ -133,15 +139,26 @@ class ET(nn.Module):
         ])
         self.K = time_steps
 
-        # Swap-related parameters.
-        # If swap_interval is provided, it should be a fractional value (0 < swap_interval <= 1)
-        self.swap_interval = swap_interval  
-        if self.swap_interval is not None:
-            if not (0 < self.swap_interval <= 1):
-                raise ValueError("swap_interval must be a fraction between 0 and 1.")
-            # next_swap_time keeps track of the next epoch fraction at which to swap.
-            self.next_swap_time = self.swap_interval
+        # --- NEW LOGIC FOR SWAP INTERVALS ---
+        if swap_interval is not None:
+            # 1) Convert a single float/int to list, or validate if a list of floats
+            if isinstance(swap_interval, (float, int)):
+                self.swap_intervals = [float(swap_interval)]
+            elif isinstance(swap_interval, (list, tuple)):
+                self.swap_intervals = [float(x) for x in swap_interval]
+            else:
+                raise ValueError("swap_interval must be a float, int, list, or tuple.")
+
+            # 2) Sort them in ascending order
+            self.swap_intervals.sort()
+
+            # 3) We'll keep track of which interval index we're checking next
+            self.swap_index = 0
+            # The very first swap time
+            self.next_swap_time = self.swap_intervals[self.swap_index]
         else:
+            self.swap_intervals = None
+            self.swap_index = None
             self.next_swap_time = None
 
         self.swap_strategy = swap_strategy
@@ -152,10 +169,12 @@ class ET(nn.Module):
 
     def forward(self, x: TENSOR, alpha: float = 1.0, epoch_progress: Optional[float] = None):
         """
-        epoch_progress: Optional float in [0,1] representing the fraction of the current epoch completed.
-                        If provided (and swap_interval is set), swaps will be triggered when epoch_progress 
-                        exceeds the next scheduled swap time.
+        epoch_progress: a float representing "how many epochs" have elapsed, e.g.
+                        current_epoch + (batch_idx / num_batches).
+        If provided, we check whether it's >= self.next_swap_time, and
+        trigger any scheduled swaps that are due.
         """
+        # Standard forward path
         x = self.patch(x)
         x = self.encode(x)
         x = torch.cat([self.cls.expand(x.size(0), -1, -1), x], dim=1)
@@ -169,21 +188,29 @@ class ET(nn.Module):
 
         x = self.decode(x[:, 0])  # CLS token classification
 
-        # Trigger swap if epoch progress is provided and the scheduled swap time has been reached.
-        if (epoch_progress is not None) and (self.swap_interval is not None):
-            # Allow for multiple swaps if a batch jump skips several intervals.
-            while epoch_progress >= self.next_swap_time:
+        # --- NEW LOGIC: TRIGGER SWAPS if epoch_progress is given ---
+        if epoch_progress is not None and self.swap_intervals is not None:
+            # We may cross multiple swap points in one go
+            while self.swap_index < len(self.swap_intervals) and epoch_progress >= self.next_swap_time:
                 self.swap_blocks(self.swap_strategy)
-                self.next_swap_time += self.swap_interval
+                self.swap_index += 1
+                if self.swap_index < len(self.swap_intervals):
+                    self.next_swap_time = self.swap_intervals[self.swap_index]
+                else:
+                    self.next_swap_time = None
+                    break  # No more swaps scheduled
 
         return x
 
     def reset_swap_schedule(self):
         """
-        Call this at the start of each epoch to reset the swap schedule.
+        If you want to reuse the same swap schedule every epoch, call this 
+        at the start of each epoch. This sets your model back to the first 
+        interval. 
         """
-        if self.swap_interval is not None:
-            self.next_swap_time = self.swap_interval
+        if self.swap_intervals is not None:
+            self.swap_index = 0
+            self.next_swap_time = self.swap_intervals[0]
 
     def swap_blocks(self, strategy: int):
         if strategy == 1:
@@ -198,9 +225,7 @@ class ET(nn.Module):
             raise ValueError(f"Invalid strategy: {strategy}")
 
     def _record_swap(self, strategy):
-        # Print the swap event on screen.
         print(f"Swap event: strategy {strategy}, new block order: {self.block_order}")
-        # Record the event in swap_history.
         self.swap_history.append({
             'strategy': strategy,
             'order': self.block_order.copy()
@@ -226,7 +251,7 @@ class ET(nn.Module):
         perm = torch.randperm(n).tolist()
         new_blocks = [self.blocks[i] for i in perm]
         self.blocks = nn.ModuleList(new_blocks)
-        # Update the block order accordingly.
+        # Update the block order.
         self.block_order = [self.block_order[i] for i in perm]
         self._record_swap(2)
 
