@@ -112,7 +112,9 @@ def main(args):
 
         for batch_idx, (images, labels) in enumerate(train_loader, 1):
             optimizer.zero_grad()
-            outputs = model(images)
+            # Compute fine-grained epoch progress: e.g., 0.25, 0.5, etc.
+            epoch_progress = epoch + (batch_idx / len(train_loader))
+            outputs = model(images, epoch_progress=epoch_progress)
             
             if labels.ndim == 1:
                 loss = F.cross_entropy(outputs, labels, label_smoothing=args.label_smoothing)
@@ -167,8 +169,7 @@ def main(args):
                             f"Val Acc: {epoch_stats['val_acc']:.2f}%")
         accelerator.print("="*50)
 
-        if args.swap_interval is not None and ((epoch+1) % args.swap_interval == 0):
-            model.swap_blocks(args.swap_strategy)
+        # Removed the end-of-epoch swap call since swapping now happens during the forward pass
 
     model.eval()
     test_correct = 0
