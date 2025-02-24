@@ -10,7 +10,7 @@ HN_MULT=4.0
 ATTN_BETA=0.125
 TIME_STEPS=1
 BLOCKS=12
-EPOCHS=300
+EPOCHS=10
 BATCH_SIZE=128
 LR=5e-5
 DATA_PATH="./data"
@@ -26,9 +26,9 @@ NUM_MACHINES=1
 export CUDA_VISIBLE_DEVICES=2
 
 # Loop over swap strategies (1, 2, 3, 4)
-for SWAP_STRATEGY in 1 2 3 4; do
+for SWAP_STRATEGY in 1; do
   # Loop over swap intervals (10, 5, 2, 1)
-  for SWAP_INTERVAL in 0.25 0.1; do
+  for SWAP_INTERVAL in 1; do
     echo "--------------------------------------------------"
     echo "Running experiment with swap_strategy=${SWAP_STRATEGY} and swap_interval=${SWAP_INTERVAL}"
     echo "--------------------------------------------------"
